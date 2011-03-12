@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Polling (Request per second)</title>
+<style>
+#show {
+    border: solid 1px #ccc;
+    padding: 5px;
+    width: 500px;
+    height: 500px;
+    font-size: 11px;
+    overflow: auto;
+}
+</style>
+</head>
+<body>
+
+    <h1>Polling (Request per second)</h1>
+
+    <div id="show"></div>
+
+    <script type="text/javascript" src="http://yui.yahooapis.com/3.3.0/build/yui/yui-min.js"></script> 
+    <script type="text/javascript">
+    YUI().use("node-base", "io", function (Y) {
+        Y.on("io:complete", function (id, o, args) {
+            Y.one("#show").append("<p>" + o.responseText + "</p>");
+        });
+        Y.later(1000, null, function () {
+            Y.io("polling.php");
+        }, null, true);
+    });
+    </script>
+</body>
+</html>

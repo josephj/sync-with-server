@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf8">
+<style>
+    .clickable {
+        cursor: pointer;
+    }
+    div {
+        background: #AACCEE;
+        border: solid 1px #336699;
+        margin: 10px;
+        padding: 5px;
+        border-radius: 5px;
+        display: inline-block;
+        text-align: center
+    }
+    .frame {
+        vertical-align: top;
+    }
+    .container {
+        display: inline-block;
+        margin: 0px;
+        padding: 0px;
+        border: none;
+        vertical-align: top;
+    }
+    .toolbar {
+        border: solid 1px #336699;
+        background: #DDEEFF;
+        margin: 5px;
+        padding: 5px;
+        border-radius: 5px;
+    }
+    .icon1 {
+        border: solid 1px #777777;
+        border-radius: 0px;
+        display: block;
+        margin: 0px;
+        padding: 0px;
+        text-align: center;
+        vertical-align: middle;
+        width: 20px;
+        height: 20px;
+    }
+    .icon2 {
+        border: solid 1px #777777;
+        border-radius: 0px;
+        display: block;
+        margin: 0px;
+        padding: 0px;
+        text-align: center;
+        vertical-align: middle;
+        width: 30px;
+        height: 30px;
+    }
+    .iconT {
+        border: solid 1px #777777;
+        border-radius: 0px;
+        display: block;
+        margin: 0px;
+        padding: 0px;
+        text-align: center;
+        vertical-align: middle;
+        width: 30px;
+        height: 30px;
+    }
+    .dot {
+        border: none;
+        display: block;
+        margin: 0px;
+        padding: 0px;
+        background: #000000;
+    }
+    .cpane {
+        border: none;
+        display: block;
+        /*background: #000000;*/
+        margin: 3px;
+        padding: 3px;
+        border-radius: 3px;
+        width: 18px;
+        height: 18px;
+    }
+    canvas {
+        background: #FFFFFF;
+        position: relative;
+        left: 0px;
+        top: 0px;
+        cursor: pointer;
+        z-index: 100;
+    }
+    #textinput {
+        visibility: hidden;
+        position: absolute;
+        z-index: 100;
+        margin: 0px;
+        padding: 0px;
+        background-color: transparent;
+        border-radius: 0px;
+        border: none;
+    }
+    #rect {
+        visibility: hidden;
+        position: absolute;
+        z-index: 101;
+        margin: 0px;
+        padding: 0px;
+        background-color: transparent;
+        border-radius: 0px;
+        border: dotted 1px black;
+        cursor: crosshair;
+    }
+    #keyin {
+        font-family: sans-serif;
+        font-size: 12px;
+    }
+</style>
+<script src="js/jquery-1.4.2.min.js"></script>
+<script>
+function drawLine(ctx, oldPos, newPos, prop) {
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = prop.color||"#000000";
+    ctx.lineWidth = prop.size||1;
+    ctx.beginPath();
+    ctx.moveTo(oldPos[0], oldPos[1]);
+    ctx.lineTo(newPos[0], newPos[1]);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+}
+function eraseLine(ctx, oldPos, newPos) {
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 15;
+    ctx.beginPath();
+    ctx.moveTo(oldPos[0], oldPos[1]);
+    ctx.lineTo(newPos[0], newPos[1]);
+    ctx.closePath;
+    ctx.stroke();
+    ctx.restore();
+}
+function drawTrace(ctx, t, prop) {
+    for(var i=0,j=t.length-1; i<j; i++) {
+        drawLine(ctx, t[i], t[i+1], prop);
+    }
+}
+function eraseTrace(ctx, t) {
+    for(var i=0,j=t.length-1; i<j; i++) {
+        eraseLine(ctx, t[i], t[i+1]);
+    }
+}
+function updateMsg(msg) {
+    var _textarea = $("textarea[name=msg]");
+    _textarea.val(_textarea.val()+msg);
+    setTimeout(function(){
+        _textarea.scrollTop(_textarea[0].scrollHeight - _textarea.innerHeight());
+    },10);
+}
+function drawText(ctx, str, pos, prop) {
+    ctx.save();
+    ctx.fillStyle = prop.color||"#000000";
+    ctx.fillText(str, pos[0]+2, pos[1]+3, ctx.measureText(str).width);
+    ctx.restore();  
+}
+function drawErect(ctx, rectprop, prop) {
+    ctx.save();
+    ctx.strokeStyle = prop.color||"#000000";
+    ctx.lineWidth = prop.size||1;
+    ctx.strokeRect(rectprop[0], rectprop[1], rectprop[2], rectprop[3]);
+    ctx.restore();
+}
+function drawFrect(ctx, rectprop, prop) {
+    ctx.save();
+    ctx.fillStyle = prop.color||"#000000";
+    ctx.fillRect(rectprop[0], rectprop[1], rectprop[2], rectprop[3]);
+    ctx.restore();
+}
+</script>
+<script>
+$(document).ready(function() {
+    var ctx = $('#canvas')[0].getContext('2d');
+    var drawing = false;
+    var oldPos = [0,0];
+    var trace = [];
+    var ws = null;
+    var drawType = "trace";
+    var textPos = [];
+    var lineprop = {
+        size: 1,
+        color: '#000000'
+    };
+    var rectprop = [0,0,0,0];
+    var startPos = [];
+    try {
+        ws = new WebSocket('ws://node.josephj.com:80/chat');
+    ws.addEventListener('message', function(e) {
+        var msg = null;
+        try {
+            msg = JSON.parse(e.data);
+        } catch(e) {
+            if(window.console) console.log(e);
+        }
+        switch(msg.type) {
+            case "board":
+                var clone = null;
+                try {
+                    clone = JSON.parse(msg.data);
+                    switch(clone.type) {
+                        case "trace":
+                            drawTrace(ctx, clone.data, clone.prop);
+                            break;
+                        case "erase":
+                            eraseTrace(ctx, clone.data);
+                            break;
+                        case "text":
+                            drawText(ctx, clone.data.text, clone.data.pos, clone.prop);
+                            break;
+                        case "erect":
+                            drawErect(ctx, clone.data, clone.prop);
+                            break;
+                        case "frect":
+                            drawFrect(ctx, clone.data, clone.prop);
+                            break;
+                    }
+                } catch(e) {
+                    if(window.console) console.log(e);
+                }
+                break;
+            case "chat":
+                var _msg = null;
+                try {
+                    _msg = JSON.parse(msg.data);
+                } catch(e) {
+                    if(window.console) console.log(e);
+                }
+                updateMsg('[' + _msg.name + ']: ' + _msg.msg + "\n");
+                break;
+        }
+    },false);   
+    } catch(e) {
+        if(window.console) console.log(e);
+    }
+    ctx.textBaseline = "top";
+    ctx.font = "12px sans-serif"
+    $('#canvas')[0].addEventListener('mousedown', function(e) {
+        drawing = true;
+        switch(drawType) {
+            case "text":
+                textPos = [e.pageX-e.currentTarget.offsetLeft, e.pageY-e.currentTarget.offsetTop-12];
+                var panel = $('#textinput')[0];
+                panel.style.left = e.pageX + "px";
+                panel.style.top = (e.pageY - 12) + "px";
+                panel.style.visibility = "visible";
+                setTimeout(function(){$('#keyin')[0].focus();},10);
+                break;
+            case "erect":
+            case "frect":
+                if(e.currentTarget.id === 'canvas') {
+                    var rect = $('#rect')[0];
+                    rectprop[0] = oldPos[0] = e.pageX-e.currentTarget.offsetLeft;
+                    rectprop[1] = oldPos[1] = e.pageY-e.currentTarget.offsetTop;
+                    startPos[0] = e.pageX;
+                    startPos[1] = e.pageY;
+                    rect.style.left = startPos[0] + "px";
+                    rect.style.top = startPos[1] + "px";
+                    rectprop[2] = rectprop[3] = 0;
+                    rect.style.width = "0px";
+                    rect.style.height = "0px";
+                    rect.style.visibility = "visible";
+                    //oldPos = [e.pageX-e.currentTarget.offsetLeft, e.pageY-e.currentTarget.offsetTop];
+                }
+                break;
+            default:
+                oldPos = [e.pageX-e.currentTarget.offsetLeft, e.pageY-e.currentTarget.offsetTop];
+                trace.push(oldPos);
+        }
+    },false);
+    $('#keyin').keypress(function(e) {
+        if(window.console) console.log(e.keyCode);
+        if(e.keyCode == 13) {
+            $('#textinput')[0].style.visibility = 'hidden';
+            drawText(ctx, $(this).val(), textPos, lineprop);
+            var res = {
+                type: "board",
+                sync: "other",
+                data: JSON.stringify({
+                    type: drawType,
+                    prop: lineprop,
+                    data: {
+                        pos: textPos,
+                        "text": $(this).val()
+                    }
+                })
+            };
+            $(this).val('');
+            try {
+                ws.send(JSON.stringify(res));
+            } catch(e) {
+                if(window.console) console.log(e);
+            }
+        }
+    });
+    $('#canvas')[0].addEventListener('mouseup', function(e) {
+        drawing = false;
+        //drawTrace(clone, trace);
+        switch(drawType) {
+            case "erect":
+            case "frect":
+                if(e.currentTarget.id === 'canvas') {
+                    var rect = $('#rect')[0];
+                    var newPos = [e.pageX-e.currentTarget.offsetLeft, e.pageY-e.currentTarget.offsetTop];
+                    rectprop[0] = (newPos[0]>=oldPos[0])? oldPos[0]:newPos[0];
+                    rectprop[1] = (newPos[1]>=oldPos[1])? oldPos[1]:newPos[1];
+                    rectprop[2] = (newPos[0]>=oldPos[0])? newPos[0] - oldPos[0]:oldPos[0] - newPos[0];
+                    rectprop[3] = (newPos[1]>=oldPos[1])? newPos[1] - oldPos[1]:oldPos[1] - newPos[1];
+                    rect.style.top = "0px";
+                    rect.style.left = "0px";
+                    rect.style.width = "0px";
+                    rect.style.height = "0px";
+                    rect.style.visibility = "hidden";
+                    switch(drawType) {
+                        case "erect":
+                            drawErect(ctx, rectprop, lineprop);
+                            break;
+                        case "frect":
+                            drawFrect(ctx, rectprop, lineprop);
+                            break;
+                    }
+                    var res = {
+                        type: "board",
+                        sync: "other",
+                        data: JSON.stringify({
+                            type: drawType,
+                            prop: lineprop,
+                            data: rectprop
+                        })
+                    };
+                }
+            case "text":
+                return;
+            default:
+                var res = {
+                    type: "board",
+                    sync: "other",
+                    data: JSON.stringify({
+                        type: drawType,
+                        prop: lineprop,
+                        data: trace
+                    })
+                };
+                break;
+        }
+        var str = JSON.stringify(res);
+        trace = [];
+        try {
+            ws.send(str);
+        } catch(e) {
+            if(window.console) console.log(e);
+        }
+    },false);
+    $('#canvas')[0].addEventListener('mousemove', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        switch(drawType) {
+            case "text":
+                return false;
+            case "erect":
+            case "frect":
+                if(drawing) {
+                    var rect = $('#rect')[0];
+                    var canvas = $('#canvas')[0];
+                    var newPos = [e.pageX-canvas.offsetLeft, e.pageY-canvas.offsetTop];
+                    rectprop[0] = (newPos[0]>=oldPos[0])? oldPos[0]:newPos[0];
+                    rectprop[1] = (newPos[1]>=oldPos[1])? oldPos[1]:newPos[1];
+                    rectprop[2] = (newPos[0]>=oldPos[0])? newPos[0] - oldPos[0]:oldPos[0] - newPos[0];
+                    rectprop[3] = (newPos[1]>=oldPos[1])? newPos[1] - oldPos[1]:oldPos[1] - newPos[1];
+                    rect.style.left = (e.pageX>=startPos[0])? startPos[0]:e.pageX + "px";
+                    rect.style.top = (e.pageY>=startPos[1])? startPos[1]:e.pageY + "px";
+                    rect.style.width = rectprop[2] + "px";
+                    rect.style.height = rectprop[3] + "px";
+                    //if(window.console) console.log('rect mousemove');
+                }
+                break;
+            default:
+                if(drawing) {
+                    var newPos = [e.pageX-e.currentTarget.offsetLeft, e.pageY-e.currentTarget.offsetTop];
+                    switch(drawType) {
+                        case "trace":
+                            drawLine(ctx, oldPos, newPos, lineprop);
+                            break;
+                        case "erase":
+                            eraseLine(ctx, oldPos, newPos);
+                            break;
+                    }
+                    oldPos = newPos;
+                    trace.push(oldPos);
+                }
+        }
+        return false;
+    },false);
+    $('.container')[0].addEventListener('mousemove', function() {
+        drawing = false;
+    },false);
+    $('#dot1').click(function() {
+        lineprop.size = 1;
+        drawType = "trace";
+        $('#canvas')[0].style.cursor = "pointer";
+    });
+    $('#dot3').click(function() {
+        lineprop.size = 3;
+        drawType = "trace";
+        $('#canvas')[0].style.cursor = "pointer";
+    });
+    $('#dot5').click(function() {
+        lineprop.size = 5;
+        drawType = "trace";
+        $('#canvas')[0].style.cursor = "pointer";
+    });
+    $('.icon2').click(function(e) {
+        $('#framecolor')[0].style.backgroundColor = lineprop.color = this.firstChild.style.backgroundColor;
+    });
+    $('#erase').click(function() {
+        drawType = "erase";
+        $('#canvas')[0].style.cursor = "crosshair";
+    });
+    $('#text').click(function(e) {
+        drawType = "text";
+        $('#canvas')[0].style.cursor = "text";
+    });
+    $('#erect').click(function(e) {
+        drawType = "erect";
+        $('#canvas')[0].style.cursor = "crosshair";
+    });
+    $('#frect').click(function(e) {
+        drawType = "frect";
+        $('#canvas')[0].style.cursor = "crosshair";
+    });
+    $("form[name=myform]").submit(function(e){
+        var _name = $("input[name=name]"),
+        _input = $("input[name=input]"),
+        _msg = '';
+            if( _name.val().length<1 ||
+                    _input.val().length<1 ) return false;
+        try {
+            _msg = {'name':_name.val(),'msg':_input.val()};
+            var res = {
+                type: "chat",
+                sync: "all",
+                data: JSON.stringify(_msg)
+            };
+            _input.val('');
+            ws.send(JSON.stringify(res));
+        } catch(e) {
+            if(window.console) console.log(e);
+        } finally {
+            return false;
+        }
+    });
+    $('#rect').bind('mousemove', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if(drawing) {
+            var rect = $('#rect')[0];
+            var canvas = $('#canvas')[0];
+            var newPos = [e.pageX-canvas.offsetLeft, e.pageY-canvas.offsetTop];
+            rectprop[0] = (newPos[0]>=oldPos[0])? oldPos[0]:newPos[0];
+            rectprop[1] = (newPos[1]>=oldPos[1])? oldPos[1]:newPos[1];
+            rectprop[2] = (newPos[0]>=oldPos[0])? newPos[0] - oldPos[0]:oldPos[0] - newPos[0];
+            rectprop[3] = (newPos[1]>=oldPos[1])? newPos[1] - oldPos[1]:oldPos[1] - newPos[1];
+            rect.style.left = (e.pageX>=startPos[0])? startPos[0]:e.pageX + "px";
+            rect.style.top = (e.pageY>=startPos[1])? startPos[1]:e.pageY + "px";
+            rect.style.width = rectprop[2] + "px";
+            rect.style.height = rectprop[3] + "px";
+            if(window.console) console.log(rectprop);
+        }
+        return false;
+    });
+    $('#rect').bind('mouseup', function(e) {
+        drawing = false;
+        var rect = $('#rect')[0];
+        rect.style.top = "0px";
+        rect.style.left = "0px";
+        rect.style.width = "0px";
+        rect.style.height = "0px";
+        rect.style.visibility = "hidden";
+        switch(drawType) {
+            case "erect":
+                drawErect(ctx, rectprop, lineprop);
+                break;
+            case "frect":
+                drawFrect(ctx, rectprop, lineprop);
+                break;
+        }
+        var res = {
+            type: "board",
+            sync: "other",
+            data: JSON.stringify({
+                type: drawType,
+                prop: lineprop,
+                data: rectprop
+            })
+        };
+        var str = JSON.stringify(res);
+        trace = [];
+        try {
+            ws.send(str);
+        } catch(e) {
+            if(window.console) console.log(e);
+        }
+    });
+});
+</script>
+</head>
+<body>
+<div class="frame">
+    <div class="container" onselectstart="return false;">
+        <div class="container">
+            <div class="toolbar">
+                <div class="container"><div class="icon1 clickable" id="dot1"><div class="dot" style="width:3px;height:3px;margin:8px;"></div></div><label style="font-size: 10px;">1</label></div>
+                <div class="container"><div class="icon1 clickable" id="dot3"><div class="dot" style="width:5px;height:5px;margin:7px;"></div></div><label style="font-size: 10px;">3</label></div>
+                <div class="container"><div class="icon1 clickable" id="dot5"><div class="dot" style="width:10px;height:10px;margin:5px"></div></div><label style="font-size: 10px;">5</label></div>
+                <hr size="1" width="100%">
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#000000"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#FFFFFF"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#444444"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#999999"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#FF0000"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#00FF00"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#0000FF"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#00FFFF"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#FF00FF"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#FFFF00"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#336699"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#663399"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#339966"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#993366"></div></div></div><br>
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#669933"></div></div></div>&nbsp;
+                <div class="container"><div class="icon2 clickable"><div class="cpane" style="background:#996633"></div></div></div>
+                <hr size="1" width="100%">
+                <div class="container"><div class="icon2"><div class="cpane" id="framecolor" style="background:#000000"></div></div></div>&nbsp;
+                <!--<div class="container"><div class="icon2"><div class="cpane" id="fillcolor" style="background:#000000"></div></div></div><br>-->
+                <hr size="1" width="100%">
+                <div class="container"><div class="iconT clickable" id="erase"><div class="cpane" style="background:#FFFFFF">E</div></div></div>&nbsp;
+                <div class="container"><div class="iconT clickable" id="text"><div class="cpane" style="background:#FFFFFF">T</div></div></div><br>
+                <div class="container"><div class="iconT clickable" id="erect"><div class="cpane" style="background:#FFFFFF;font-size:10px;border:solid 1px #000000">SQR</div></div></div>&nbsp;
+                <div class="container"><div class="iconT clickable" id="frect"><div class="cpane" style="background:#000000;color:#FFFFFF;font-size:10px">SQR</div></div></div><br>
+                
+            </div>
+        </div>
+        <canvas id="canvas" width="640" height="480"></canvas>
+    </div>
+    <div class="container" onmousemove="return false;">
+        <form name="myform">
+        <!--ROOM:&nbsp;<input type="text" length="20" name="room"><br>-->
+        <textarea name="msg" readonly cols="40" rows="24"></textarea><br>
+        NAME:&nbsp;<input type="text" length="20" name="name"><br>
+        Message:&nbsp;<input type="text" length="80" width="200" name="input"><br>
+        <input type="submit" value="送出">
+        </form>
+    </div>
+</div>
+<div id="textinput"><input type="text" length="20" style="border:none" id="keyin"></div>
+<div id="rect"></div>
+</body>
+</html>
+
