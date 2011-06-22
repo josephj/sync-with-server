@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Polling</title>
+<style>
+iframe {
+    position: fixed;
+    right: 10px;
+    top: 10px;
+    width: 500px;
+    height: 500px;
+}
+#show {
+    border: solid 1px #ccc;
+    padding: 5px;
+    width: 500px;
+    height: 500px;
+    font-size: 11px;
+    overflow: auto;
+}
+</style>
+</head>
+<body>
+
+    <h1>Long Polling (with nodeJS)</h1>
+
+    <div id="show"></div>
+
+    <script type="text/javascript" src="http://yui.yahooapis.com/3.3.0/build/yui/yui-min.js"></script> 
+    <script type="text/javascript">
+    YUI().use("jsonp", "node-base", function (Y) {
+        var handler = function (response) {
+            Y.one("#show").append("<p>" + response.result + "</p>");
+            Y.jsonp("http://comet.josephj.com/?callback={callback}", arguments.callee);
+        };
+        Y.on("domready", function () {
+            Y.jsonp("http://comet.josephj.com/?callback={callback}", handler);
+        });
+    });
+    </script>
+</body>
+</html>
